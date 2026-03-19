@@ -270,6 +270,16 @@ svg {
   pointer-events: none;
 }
 
+.map-label--highlighted {
+  font-size: 14px;
+}
+
+.map-price-label {
+  fill: rgba(16, 20, 24, 0.92);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .map-legend-title,
 .map-legend-axis text,
 .map-empty {

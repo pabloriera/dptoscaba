@@ -8,6 +8,7 @@ const GEOJSON_CANDIDATES = [
   "../data/caba_barrios.geojson"
 ];
 
+const USD_TO_ARS = 1400;
 const MAP_COLORS = [
   "#51d8f6",
   "#32a8df",
@@ -16,6 +17,20 @@ const MAP_COLORS = [
   "#d74a7d",
   "#b10b4f"
 ];
+const MAP_LEGEND_MAX_USD = 1000;
+const MAP_HIGHLIGHTED_BARRIOS = new Set([
+  "nunez",
+  "agronomia",
+  "palermo",
+  "recoleta",
+  "puerto madero",
+  "floresta",
+  "villa lugano",
+  "parque avellaneda",
+  "parque chacabuco",
+  "boedo",
+  "pompeya"
+]);
 
 const state = {
   currency: "USD",
@@ -64,6 +79,14 @@ function toCurrency(row, currency) {
     return parseNumber(row.rent_amount_ars);
   }
   return parseNumber(row.rent_amount_usd);
+}
+
+function getMapLegendMax(currency) {
+  if (currency === "ARS") {
+    return MAP_LEGEND_MAX_USD * USD_TO_ARS;
+  }
+
+  return MAP_LEGEND_MAX_USD;
 }
 
 function median(values) {
@@ -565,9 +588,11 @@ function drawBarrioMap(stats) {
   const sortedValues = [...values].sort((a, b) => a - b);
   const minValue = sortedValues[0];
   const rawMaxValue = sortedValues[sortedValues.length - 1];
+  const scaleMaxValue = Math.max(minValue, Math.min(rawMaxValue, getMapLegendMax(state.currency)));
+  const hasCappedLegend = rawMaxValue > scaleMaxValue;
   const colorScale = d3
     .scaleSequentialLog()
-    .domain([minValue, rawMaxValue || minValue + 1])
+    .domain([minValue, scaleMaxValue || minValue + 1])
     .interpolator(interpolateMapColor)
     .clamp(true);
 
@@ -608,14 +633,37 @@ function drawBarrioMap(stats) {
     .selectAll("text")
     .data(enrichedFeatures.filter((item) => item.stats))
     .join("text")
-    .attr("class", "map-label")
+    .attr("class", (item) => {
+      const key = normalizeGeoKey(item.barrioName);
+      return MAP_HIGHLIGHTED_BARRIOS.has(key) ? "map-label map-label--highlighted" : "map-label";
+    })
     .attr("transform", (item) => {
       const centroid = path.centroid(item.feature);
       return `translate(${centroid[0]}, ${centroid[1]})`;
     })
-    .text((item) => item.barrioName)
     .attr("text-anchor", "middle")
-    .attr("dy", "0.35em");
+    .each(function (item) {
+      const label = d3.select(this);
+      const key = normalizeGeoKey(item.barrioName);
+      const isHighlighted = MAP_HIGHLIGHTED_BARRIOS.has(key);
+
+      label.selectAll("tspan").remove();
+
+      label
+        .append("tspan")
+        .attr("x", 0)
+        .attr("dy", isHighlighted ? "-0.2em" : "0.35em")
+        .text(item.barrioName);
+
+      if (isHighlighted) {
+        label
+          .append("tspan")
+          .attr("class", "map-price-label")
+          .attr("x", 0)
+          .attr("dy", "1.15em")
+          .text(formatValue(item.stats.median, state.currency));
+      }
+    });
 
   const legendWidth = 24;
   const legendHeight = 240;
@@ -635,7 +683,7 @@ function drawBarrioMap(stats) {
     .data(d3.range(0, 1.01, 0.1))
     .join("stop")
     .attr("offset", (value) => `${value * 100}%`)
-    .attr("stop-color", (value) => colorScale(interpolateLogValue(minValue, rawMaxValue, value)));
+    .attr("stop-color", (value) => colorScale(interpolateLogValue(minValue, scaleMaxValue, value)));
 
   svg
     .append("text")
@@ -645,13 +693,6 @@ function drawBarrioMap(stats) {
     .attr("text-anchor", "middle")
     .text(`Mediana (${state.currency})`);
 
-  svg
-    .append("text")
-    .attr("class", "map-legend-note")
-    .attr("x", legendX + legendWidth / 2)
-    .attr("y", legendY - 2)
-    .attr("text-anchor", "middle")
-    .text("Escala logarítmica");
 
   svg
     .append("rect")
@@ -663,13 +704,19 @@ function drawBarrioMap(stats) {
     .attr("rx", 999)
     .attr("fill", "url(#map-legend-gradient)");
 
-  const legendScale = d3.scaleLog().domain([minValue, rawMaxValue]).range([legendY + legendHeight, legendY]);
-  const legendTickValues = buildLogLegendTicks(minValue, rawMaxValue);
+  const legendScale = d3.scaleLog().domain([minValue, scaleMaxValue]).range([legendY + legendHeight, legendY]);
+  const legendTickValues = buildLogLegendTicks(minValue, scaleMaxValue);
   const legendAxis = d3
     .axisLeft(legendScale)
     .tickValues(legendTickValues)
     .tickSize(8)
-    .tickFormat((value) => formatValue(value, state.currency));
+    .tickFormat((value) => {
+      if (hasCappedLegend && value === scaleMaxValue) {
+        return `${formatValue(value, state.currency)}+`;
+      }
+
+      return formatValue(value, state.currency);
+    });
 
   svg
     .append("g")
@@ -677,13 +724,6 @@ function drawBarrioMap(stats) {
     .attr("transform", `translate(${legendX - 10}, 0)`)
     .call(legendAxis);
 
-  svg
-    .append("text")
-    .attr("class", "map-legend-note")
-    .attr("x", legendX + legendWidth / 2)
-    .attr("y", legendY + legendHeight + 28)
-    .attr("text-anchor", "middle")
-    .text(`Máximo: ${formatValue(rawMaxValue, state.currency)}`);
 }
 
 function renderCharts() {
