@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Buenos Aires Apartment Rent Snapshot</title>
+    <meta
+      name="description"
+      content="A plain-language look at apartment rents across Buenos Aires neighborhoods, with interactive charts and quick takeaways."
+    >
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Source+Serif+4:wght@400;600&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Buenos Aires housing snapshot</p>
+          <h1>See how asking rents vary across neighborhoods</h1>
+          <p class="lede">
+            This page turns current apartment listings into a visual guide for people who want a quick feel for the market.
+            It is meant to be easy to read: where prices tend to sit, how wide the spread is, and which areas stand apart.
+          </p>
+        </div>
+        <div class="hero-panel">
+          <div class="panel-note">At a glance</div>
+          <div class="hero-stats" id="hero-stats"></div>
+        </div>
+      </header>
+
+      <main>
+        <section class="intro-grid">
+          <article class="story-card story-card-large">
+            <h2>How to read the charts</h2>
+            <p>
+              Each neighborhood appears as a horizontal boxplot. The middle line shows a typical asking rent, the box shows the main range,
+              and the whiskers show how far prices stretch beyond that core band.
+            </p>
+            <p>
+              The result is useful for quick comparisons: where rents cluster tightly, where they spread widely, and where premium areas pull away from the rest.
+            </p>
+          </article>
+
+          <article class="story-card">
+            <h2>What this is for</h2>
+            <p>
+              Use it to explore neighborhoods, compare general price levels, and understand the size of the gap between more accessible and more expensive areas.
+            </p>
+          </article>
+
+          <article class="story-card accent-card">
+            <h2>Important note</h2>
+            <p>
+              These are asking prices from listings, not final contract values. Individual homes can still differ a lot depending on size, condition, building amenities, and exact location.
+            </p>
+          </article>
+        </section>
+
+        <section class="controls-section">
+          <div>
+            <p class="eyebrow">Interactive view</p>
+            <h2>Explore the market visually</h2>
+          </div>
+          <div class="control-row">
+            <label class="control">
+              <span>Currency</span>
+              <select id="currency-select">
+                <option value="USD">USD</option>
+                <option value="ARS">ARS</option>
+              </select>
+            </label>
+            <label class="control">
+              <span>Sort neighborhoods</span>
+              <select id="sort-select">
+                <option value="median-desc">Typical rent: high to low</option>
+                <option value="median-asc">Typical rent: low to high</option>
+                <option value="name-asc">Name: A to Z</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="chart-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">View 1</p>
+              <h2>All neighborhoods</h2>
+            </div>
+            <p class="section-text" id="chart-summary-all"></p>
+          </div>
+          <div class="chart-card">
+            <div class="chart-frame">
+              <svg id="boxplot-all" aria-label="All neighborhoods rent boxplot"></svg>
+            </div>
+          </div>
+        </section>
+
+        <section class="chart-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">View 2</p>
+              <h2>Without Puerto Madero</h2>
+            </div>
+            <p class="section-text" id="chart-summary-no-pm"></p>
+          </div>
+          <div class="chart-card">
+            <div class="chart-frame">
+              <svg id="boxplot-no-pm" aria-label="Neighborhood rent boxplot excluding Puerto Madero"></svg>
+            </div>
+          </div>
+        </section>
+
+        <section class="gallery-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Quick reference</p>
+              <h2>Static chart images</h2>
+            </div>
+            <p class="section-text">These image versions are useful for sharing or a quick glance.</p>
+          </div>
+          <div class="image-grid">
+            <figure class="image-card">
+              <img src="output/rent_boxplot_by_barrio_usd.png" alt="Static rent boxplot for all neighborhoods">
+              <figcaption>All neighborhoods</figcaption>
+            </figure>
+            <figure class="image-card">
+              <img src="output/rent_boxplot_by_barrio_without_puerto_madero_usd.png" alt="Static rent boxplot without Puerto Madero">
+              <figcaption>Without Puerto Madero</figcaption>
+            </figure>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
