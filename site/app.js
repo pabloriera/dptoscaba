@@ -1,6 +1,6 @@
-const DETAIL_CSV_CANDIDATES = [
-  "output/rent_listings_detailed.csv",
-  "../output/rent_listings_detailed.csv"
+const SITE_DATA_CANDIDATES = [
+  "output/site_stats.json",
+  "../output/site_stats.json"
 ];
 
 const GEOJSON_CANDIDATES = [
@@ -54,7 +54,7 @@ const state = {
   analysis: "rent",
   currency: "USD",
   sort: "median-desc",
-  detailRows: [],
+  siteData: null,
   geoData: null,
   maxRange: null
 };
@@ -95,50 +95,16 @@ function formatValue(value, currency) {
   }).format(value);
 }
 
-function convertAmount(amount, sourceCurrency, targetCurrency) {
-  if (!Number.isFinite(amount)) {
-    return null;
-  }
-
-  if (targetCurrency === "ARS") {
-    if (sourceCurrency === "$") {
-      return amount;
-    }
-    if (sourceCurrency === "USD") {
-      return amount * USD_TO_ARS;
-    }
-    return null;
-  }
-
-  if (targetCurrency === "USD") {
-    if (sourceCurrency === "USD") {
-      return amount;
-    }
-    if (sourceCurrency === "$") {
-      return amount / USD_TO_ARS;
-    }
-    return null;
-  }
-
-  return null;
-}
-
 function getAnalysisConfig() {
   return ANALYSIS_CONFIG[state.analysis] || ANALYSIS_CONFIG.rent;
 }
 
-function getMetricValue(row, currency) {
-  if (state.analysis === "rent") {
-    const field = currency === "ARS" ? "rent_amount_ars" : "rent_amount_usd";
-    const precomputed = parseNumber(row[field]);
-    if (Number.isFinite(precomputed)) {
-      return precomputed;
-    }
-
-    return convertAmount(parseNumber(row.rent_amount), row.rent_currency, currency);
-  }
-
-  return convertAmount(parseNumber(row.expenses_amount), row.expenses_currency, currency);
+function getCurrentAnalysisData() {
+  return state.siteData?.analyses?.[state.analysis]?.[state.currency] || {
+    median: null,
+    unit_count: 0,
+    neighborhoods: []
+  };
 }
 
 function getMapLegendMax(currency) {
@@ -160,21 +126,6 @@ function median(values) {
     return (ordered[middle - 1] + ordered[middle]) / 2;
   }
   return ordered[middle];
-}
-
-function quantile(sortedValues, q) {
-  if (!sortedValues.length) {
-    return null;
-  }
-
-  const index = (sortedValues.length - 1) * q;
-  const low = Math.floor(index);
-  const high = Math.ceil(index);
-  if (low === high) {
-    return sortedValues[low];
-  }
-  const weight = index - low;
-  return sortedValues[low] * (1 - weight) + sortedValues[high] * weight;
 }
 
 function normalizeBarrio(value) {
@@ -258,41 +209,17 @@ function buildLogLegendTicks(minValue, maxValue) {
 }
 
 function computeNeighborhoodStats() {
-  const grouped = d3.group(
-    state.detailRows.filter((row) => {
-      const barrio = normalizeBarrio(row.barrio);
-      if (!barrio || barrio === "otro" || barrio === "otros") {
-        return false;
-      }
-
-      const amount = getMetricValue(row, state.currency);
-      return Number.isFinite(amount) && amount > 1;
-    }),
-    (row) => row.barrio.trim()
-  );
-
-  const stats = [];
-
-  for (const [barrio, rows] of grouped.entries()) {
-    const values = rows
-      .map((row) => getMetricValue(row, state.currency))
-      .filter((value) => Number.isFinite(value))
-      .sort((a, b) => a - b);
-
-    if (!values.length) {
-      continue;
-    }
-
-    stats.push({
-      barrio: formatBarrioName(barrio),
-      count: values.length,
-      min: values[0],
-      q1: quantile(values, 0.25),
-      median: quantile(values, 0.5),
-      q3: quantile(values, 0.75),
-      max: values[values.length - 1]
-    });
-  }
+  const stats = getCurrentAnalysisData().neighborhoods
+    .map((row) => ({
+      barrio: formatBarrioName(row.barrio),
+      count: parseNumber(row.count),
+      min: parseNumber(row.min),
+      q1: parseNumber(row.q1),
+      median: parseNumber(row.median),
+      q3: parseNumber(row.q3),
+      max: parseNumber(row.max)
+    }))
+    .filter((row) => Number.isFinite(row.median));
 
   if (state.sort === "median-asc") {
     stats.sort((a, b) => a.median - b.median);
@@ -321,37 +248,26 @@ function computeMapStats(stats) {
 }
 
 function renderHeroStats() {
-  const listings = state.detailRows.length;
-  const barrios = new Set(
-    state.detailRows
-      .map((row) => normalizeBarrio(row.barrio))
-      .filter((value) => value && value !== "otro" && value !== "otros")
-  ).size;
-  const currentValues = state.detailRows
-    .map((row) => getMetricValue(row, state.currency))
-    .filter((value) => Number.isFinite(value) && value > 1);
-  const currentAreas = state.detailRows
-    .map((row) => parseNumber(row.total_area_m2))
-    .filter((value) => Number.isFinite(value));
-
+  const summary = state.siteData?.summary || {};
+  const analysisData = getCurrentAnalysisData();
   const analysisConfig = getAnalysisConfig();
 
   const metrics = [
     {
       label: "Departamentos publicados",
-      value: new Intl.NumberFormat("es-AR").format(listings)
+      value: new Intl.NumberFormat("es-AR").format(parseNumber(summary.total_listings) || 0)
     },
     {
       label: "Barrios",
-      value: new Intl.NumberFormat("es-AR").format(barrios)
+      value: new Intl.NumberFormat("es-AR").format(parseNumber(summary.barrios) || 0)
     },
     {
       label: analysisConfig.heroLabel,
-      value: formatValue(median(currentValues), state.currency)
+      value: formatValue(parseNumber(analysisData.median), state.currency)
     },
     {
       label: "Metros cuadrados promedio",
-      value: `${Math.round(median(currentAreas) || 0)} m²`
+      value: `${Math.round(parseNumber(summary.median_total_area_m2) || 0)} m²`
     }
   ];
 
@@ -841,12 +757,12 @@ async function loadFirstAvailableJson(paths) {
 }
 
 async function loadData() {
-  const [detailRows, geoData] = await Promise.all([
-    loadFirstAvailableCsv(DETAIL_CSV_CANDIDATES),
+  const [siteData, geoData] = await Promise.all([
+    loadFirstAvailableJson(SITE_DATA_CANDIDATES),
     loadFirstAvailableJson(GEOJSON_CANDIDATES).catch(() => null)
   ]);
 
-  state.detailRows = detailRows;
+  state.siteData = siteData;
   state.geoData = geoData;
 
   analysisSelect.addEventListener("change", (event) => {
