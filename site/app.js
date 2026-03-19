@@ -177,7 +177,7 @@ function renderChartSummary(stats) {
   const container = document.getElementById("chart-summary");
   const units = stats.reduce((sum, row) => sum + row.count, 0);
   const medianOfMedians = median(stats.map((row) => row.median).filter(Number.isFinite));
-  container.textContent = `${new Intl.NumberFormat("es-AR").format(units)} unidades en ${stats.length} barrios. La mediana típica entre barrios es ${formatValue(medianOfMedians, state.currency)}.`;
+  container.textContent = `${new Intl.NumberFormat("es-AR").format(units)} unidades en ${stats.length} barrios. La mediana entre barrios es ${formatValue(medianOfMedians, state.currency)}.`;
 }
 
 function getRangeStep(currency) {
