@@ -6,12 +6,15 @@ const DETAIL_CSV_CANDIDATES = [
 const state = {
   currency: "USD",
   sort: "median-desc",
-  detailRows: []
+  detailRows: [],
+  maxRange: null
 };
 
 const heroStats = document.getElementById("hero-stats");
 const currencySelect = document.getElementById("currency-select");
 const sortSelect = document.getElementById("sort-select");
+const rangeMaxInput = document.getElementById("range-max");
+const rangeMaxValue = document.getElementById("range-max-value");
 
 function parseNumber(value) {
   const parsed = Number(value);
@@ -177,6 +180,28 @@ function renderChartSummary(stats) {
   container.textContent = `${new Intl.NumberFormat("es-AR").format(units)} unidades en ${stats.length} barrios. La mediana típica entre barrios es ${formatValue(medianOfMedians, state.currency)}.`;
 }
 
+function getRangeStep(currency) {
+  return currency === "ARS" ? 10000 : 10;
+}
+
+function syncRangeControl(stats) {
+  const dataMax = d3.max(stats, (row) => row.max) || 0;
+  const step = getRangeStep(state.currency);
+  const minValue = Math.max(step, Math.ceil((dataMax * 0.1) / step) * step);
+
+  if (!Number.isFinite(state.maxRange) || state.maxRange <= 0) {
+    state.maxRange = dataMax;
+  }
+
+  state.maxRange = Math.max(minValue, Math.min(dataMax, state.maxRange));
+
+  rangeMaxInput.min = String(minValue);
+  rangeMaxInput.max = String(dataMax);
+  rangeMaxInput.step = String(step);
+  rangeMaxInput.value = String(state.maxRange);
+  rangeMaxValue.textContent = formatValue(state.maxRange, state.currency);
+}
+
 function drawBoxplot(svgId, stats, title, note) {
   const svg = d3.select(`#${svgId}`);
   svg.selectAll("*").remove();
@@ -190,7 +215,8 @@ function drawBoxplot(svgId, stats, title, note) {
   svg.attr("viewBox", `0 0 ${width} ${height}`);
 
   const maxValue = d3.max(stats, (row) => row.max) || 0;
-  const x = d3.scaleLinear().domain([0, maxValue]).nice().range([margin.left, width - margin.right]);
+  const visibleMax = Number.isFinite(state.maxRange) ? Math.min(state.maxRange, maxValue) : maxValue;
+  const x = d3.scaleLinear().domain([0, visibleMax]).nice().range([margin.left, width - margin.right]).clamp(true);
   const y = d3
     .scaleBand()
     .domain(stats.map((row) => row.barrio))
@@ -302,12 +328,13 @@ function drawBoxplot(svgId, stats, title, note) {
 function renderCharts() {
   const allStats = computeNeighborhoodStats();
   renderChartSummary(allStats);
+  syncRangeControl(allStats);
 
   drawBoxplot(
     "boxplot-all",
     allStats,
     `Alquileres publicados por barrio en ${state.currency}`,
-    "Pasá el cursor sobre cada barrio para ver más detalle."
+    `Pasá el cursor sobre cada barrio para ver más detalle. Límite visible: ${formatValue(state.maxRange, state.currency)}.`
   );
 }
 
@@ -336,12 +363,18 @@ async function loadData() {
 
   currencySelect.addEventListener("change", (event) => {
     state.currency = event.target.value;
+    state.maxRange = null;
     render();
   });
 
   sortSelect.addEventListener("change", (event) => {
     state.sort = event.target.value;
     render();
+  });
+
+  rangeMaxInput.addEventListener("input", (event) => {
+    state.maxRange = parseNumber(event.target.value);
+    renderCharts();
   });
 
   render();

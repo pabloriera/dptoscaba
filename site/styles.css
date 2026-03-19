@@ -45,7 +45,7 @@ h2 {
 }
 
 h1 {
-  max-width: 16ch;
+  /* max-width: 16ch; */
   font-size: clamp(2.2rem, 5vw, 3.5rem);
 }
 
