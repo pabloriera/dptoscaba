@@ -175,6 +175,10 @@ function renderHeroStats() {
 
 function renderChartSummary(stats) {
   const container = document.getElementById("chart-summary");
+  if (!container) {
+    return;
+  }
+
   const units = stats.reduce((sum, row) => sum + row.count, 0);
   const medianOfMedians = median(stats.map((row) => row.median).filter(Number.isFinite));
   container.textContent = `${new Intl.NumberFormat("es-AR").format(units)} unidades en ${stats.length} barrios. La mediana entre barrios es ${formatValue(medianOfMedians, state.currency)}.`;
