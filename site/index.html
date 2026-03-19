@@ -58,10 +58,25 @@
 
         <section class="panel chart-panel">
           <svg id="boxplot-all" aria-label="Grafico de alquileres por barrio"></svg>
+          <div id="boxplot-tooltip" class="data-tooltip" hidden></div>
+        </section>
+
+        <section class="panel map-panel">
+          <div class="map-header">
+            <h2>Mapa por barrio</h2>
+            <p class="map-text">
+              El color muestra la mediana del alquiler publicado en cada barrio. Pasá el cursor para ver el valor típico,
+              el rango publicado y la cantidad de unidades relevadas.
+            </p>
+          </div>
+          <div class="map-frame">
+            <svg id="barrio-map" aria-label="Mapa de alquileres por barrio"></svg>
+            <div id="barrio-map-tooltip" class="map-tooltip" hidden></div>
+          </div>
         </section>
       </main>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260319-3"></script>
   </body>
 </html>

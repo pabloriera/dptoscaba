@@ -3,10 +3,26 @@ const DETAIL_CSV_CANDIDATES = [
   "../output/rent_listings_detailed.csv"
 ];
 
+const GEOJSON_CANDIDATES = [
+  "data/caba_barrios.geojson",
+  "../data/caba_barrios.geojson"
+];
+
+const MAP_COLOR_CAP_PERCENTILE = 0.9;
+const MAP_COLORS = [
+  "#51d8f6",
+  "#32a8df",
+  "#6f7fc2",
+  "#9a6ab0",
+  "#d74a7d",
+  "#b10b4f"
+];
+
 const state = {
   currency: "USD",
   sort: "median-desc",
   detailRows: [],
+  geoData: null,
   maxRange: null
 };
 
@@ -15,6 +31,9 @@ const currencySelect = document.getElementById("currency-select");
 const sortSelect = document.getElementById("sort-select");
 const rangeMaxInput = document.getElementById("range-max");
 const rangeMaxValue = document.getElementById("range-max-value");
+const boxplotTooltip = document.getElementById("boxplot-tooltip");
+const mapTooltip = document.getElementById("barrio-map-tooltip");
+const interpolateMapColor = d3.interpolateRgbBasis(MAP_COLORS);
 
 function parseNumber(value) {
   const parsed = Number(value);
@@ -80,6 +99,22 @@ function normalizeBarrio(value) {
   return (value || "").trim().toLowerCase();
 }
 
+function formatBarrioName(value) {
+  return (value || "")
+    .trim()
+    .toLocaleLowerCase("es-AR")
+    .replace(/(^|[\s\/-])(\p{L})/gu, (match, separator, letter) => `${separator}${letter.toLocaleUpperCase("es-AR")}`);
+}
+
+function normalizeGeoKey(value) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 function computeNeighborhoodStats() {
   const grouped = d3.group(
     state.detailRows.filter((row) => {
@@ -107,7 +142,7 @@ function computeNeighborhoodStats() {
     }
 
     stats.push({
-      barrio,
+      barrio: formatBarrioName(barrio),
       count: values.length,
       min: values[0],
       q1: quantile(values, 0.25),
@@ -126,6 +161,21 @@ function computeNeighborhoodStats() {
   }
 
   return stats;
+}
+
+function computeMapStats(stats) {
+  return new Map(
+    stats.map((row) => [
+      normalizeGeoKey(row.barrio),
+      {
+        barrio: row.barrio,
+        count: row.count,
+        min: row.min,
+        median: row.median,
+        max: row.max
+      }
+    ])
+  );
 }
 
 function renderHeroStats() {
@@ -206,6 +256,32 @@ function syncRangeControl(stats) {
   rangeMaxValue.textContent = formatValue(state.maxRange, state.currency);
 }
 
+function showBoxplotTooltip(event, row) {
+  if (!boxplotTooltip || !row) {
+    return;
+  }
+
+  boxplotTooltip.hidden = false;
+  boxplotTooltip.innerHTML = `
+    <strong>${row.barrio}</strong>
+    <span>Unidades: ${new Intl.NumberFormat("es-AR").format(row.count)}</span>
+    <span>Mediana: ${formatValue(row.median, state.currency)}</span>
+    <span>Rango central: ${formatValue(row.q1, state.currency)} a ${formatValue(row.q3, state.currency)}</span>
+    <span>Rango completo: ${formatValue(row.min, state.currency)} a ${formatValue(row.max, state.currency)}</span>
+  `;
+
+  boxplotTooltip.style.left = `${event.clientX + 16}px`;
+  boxplotTooltip.style.top = `${event.clientY + 16}px`;
+}
+
+function hideBoxplotTooltip() {
+  if (!boxplotTooltip) {
+    return;
+  }
+
+  boxplotTooltip.hidden = true;
+}
+
 function drawBoxplot(svgId, stats, title, note) {
   const svg = d3.select(`#${svgId}`);
   svg.selectAll("*").remove();
@@ -256,6 +332,23 @@ function drawBoxplot(svgId, stats, title, note) {
     .attr("transform", (row) => `translate(0, ${y(row.barrio) + y.bandwidth() / 2})`);
 
   rows
+    .append("rect")
+    .attr("class", "boxplot-hitbox")
+    .attr("x", margin.left)
+    .attr("y", -Math.max(12, y.bandwidth()))
+    .attr("width", width - margin.left - margin.right)
+    .attr("height", Math.max(24, y.bandwidth() * 2))
+    .on("mouseenter", function (event, row) {
+      showBoxplotTooltip(event, row);
+    })
+    .on("mousemove", function (event, row) {
+      showBoxplotTooltip(event, row);
+    })
+    .on("mouseleave", function () {
+      hideBoxplotTooltip();
+    });
+
+  rows
     .append("line")
     .attr("class", "whisker")
     .attr("x1", (row) => x(row.min))
@@ -295,10 +388,6 @@ function drawBoxplot(svgId, stats, title, note) {
     .attr("y1", -9)
     .attr("y2", 9);
 
-  rows.append("title").text(
-    (row) => `${row.barrio}\nUnidades: ${row.count}\nMediana: ${formatValue(row.median, state.currency)}\nRango central: ${formatValue(row.q1, state.currency)} a ${formatValue(row.q3, state.currency)}\nRango completo: ${formatValue(row.min, state.currency)} a ${formatValue(row.max, state.currency)}`
-  );
-
   svg
     .append("text")
     .attr("class", "chart-title")
@@ -329,9 +418,230 @@ function drawBoxplot(svgId, stats, title, note) {
     .text(note);
 }
 
+function showMapTooltip(event, stats) {
+  if (!mapTooltip || !stats) {
+    return;
+  }
+
+  mapTooltip.hidden = false;
+  mapTooltip.innerHTML = `
+    <strong>${stats.barrio}</strong>
+    <span>Mediana: ${formatValue(stats.median, state.currency)}</span>
+    <span>Rango: ${formatValue(stats.min, state.currency)} a ${formatValue(stats.max, state.currency)}</span>
+    <span>Unidades: ${new Intl.NumberFormat("es-AR").format(stats.count)}</span>
+  `;
+
+  const offsetX = 18;
+  const offsetY = 18;
+  mapTooltip.style.left = `${event.offsetX + offsetX}px`;
+  mapTooltip.style.top = `${event.offsetY + offsetY}px`;
+}
+
+function hideMapTooltip() {
+  if (!mapTooltip) {
+    return;
+  }
+
+  mapTooltip.hidden = true;
+}
+
+function drawBarrioMap(stats) {
+  const svg = d3.select("#barrio-map");
+  svg.selectAll("*").remove();
+
+  if (!state.geoData) {
+    svg
+      .attr("viewBox", "0 0 1120 220")
+      .append("text")
+      .attr("class", "map-empty")
+      .attr("x", 40)
+      .attr("y", 120)
+      .text("No fue posible cargar el mapa de barrios.");
+    hideMapTooltip();
+    return;
+  }
+
+  const width = 1120;
+  const height = 860;
+  const margin = { top: 20, right: 28, bottom: 120, left: 28 };
+
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+  const projection = d3.geoMercator().fitExtent(
+    [
+      [margin.left, margin.top],
+      [width - margin.right, height - margin.bottom]
+    ],
+    state.geoData
+  );
+  const path = d3.geoPath(projection);
+  const statsByBarrio = computeMapStats(stats);
+
+  const enrichedFeatures = state.geoData.features.map((feature) => {
+    const barrioName = feature?.properties?.BARRIO || "";
+    const key = normalizeGeoKey(barrioName);
+    return {
+      feature,
+      key,
+      barrioName: formatBarrioName(barrioName),
+      stats: statsByBarrio.get(key) || null
+    };
+  });
+
+  const values = enrichedFeatures
+    .map((item) => item.stats?.median)
+    .filter((value) => Number.isFinite(value));
+
+  if (!values.length) {
+    svg
+      .append("text")
+      .attr("class", "map-empty")
+      .attr("x", 40)
+      .attr("y", 120)
+      .text("No hay datos suficientes para pintar el mapa.");
+    hideMapTooltip();
+    return;
+  }
+
+  const sortedValues = [...values].sort((a, b) => a - b);
+  const minValue = sortedValues[0];
+  const rawMaxValue = sortedValues[sortedValues.length - 1];
+  const cappedMaxValue = quantile(sortedValues, MAP_COLOR_CAP_PERCENTILE) || rawMaxValue;
+  const colorMaxValue = Math.max(minValue, cappedMaxValue);
+  const hasCappedLegend = rawMaxValue > colorMaxValue;
+  const colorScale = d3
+    .scaleSequential()
+    .domain([minValue, colorMaxValue || minValue + 1])
+    .interpolator(interpolateMapColor)
+    .clamp(true);
+
+  const mapGroup = svg.append("g").attr("class", "map-group");
+
+  mapGroup
+    .selectAll("path")
+    .data(enrichedFeatures)
+    .join("path")
+    .attr("class", (item) => `barrio-shape${item.stats ? "" : " barrio-shape--empty"}`)
+    .attr("d", (item) => path(item.feature))
+    .attr("fill", (item) => (item.stats ? colorScale(item.stats.median) : "#e5eaef"))
+    .on("mouseenter", function (event, item) {
+      d3.select(this).classed("barrio-shape--active", true);
+      showMapTooltip(event, item.stats || {
+        barrio: item.barrioName,
+        median: NaN,
+        min: NaN,
+        max: NaN,
+        count: 0
+      });
+    })
+    .on("mousemove", function (event, item) {
+      showMapTooltip(event, item.stats || {
+        barrio: item.barrioName,
+        median: NaN,
+        min: NaN,
+        max: NaN,
+        count: 0
+      });
+    })
+    .on("mouseleave", function () {
+      d3.select(this).classed("barrio-shape--active", false);
+      hideMapTooltip();
+    });
+
+  mapGroup
+    .selectAll("text")
+    .data(enrichedFeatures.filter((item) => item.stats))
+    .join("text")
+    .attr("class", "map-label")
+    .attr("transform", (item) => {
+      const centroid = path.centroid(item.feature);
+      return `translate(${centroid[0]}, ${centroid[1]})`;
+    })
+    .text((item) => item.barrioName)
+    .attr("text-anchor", "middle")
+    .attr("dy", "0.35em");
+
+  const legendWidth = 24;
+  const legendHeight = 240;
+  const legendX = width - margin.right - legendWidth - 72;
+  const legendY = margin.top + 140;
+  const defs = svg.append("defs");
+  const gradient = defs
+    .append("linearGradient")
+    .attr("id", "map-legend-gradient")
+    .attr("x1", "0%")
+    .attr("y1", "100%")
+    .attr("x2", "0%")
+    .attr("y2", "0%");
+
+  gradient
+    .selectAll("stop")
+    .data(d3.range(0, 1.01, 0.1))
+    .join("stop")
+    .attr("offset", (value) => `${value * 100}%`)
+    .attr("stop-color", (value) => colorScale(minValue + (colorMaxValue - minValue) * value));
+
+  svg
+    .append("text")
+    .attr("class", "map-legend-title")
+    .attr("x", legendX + legendWidth / 2)
+    .attr("y", legendY - 18)
+    .attr("text-anchor", "middle")
+    .text(`Mediana (${state.currency})`);
+
+  if (hasCappedLegend) {
+    svg
+      .append("text")
+      .attr("class", "map-legend-note")
+      .attr("x", legendX + legendWidth / 2)
+      .attr("y", legendY - 2)
+      .attr("text-anchor", "middle")
+      .text(`Escala visual saturada arriba de ${formatValue(colorMaxValue, state.currency)}`);
+  }
+
+  svg
+    .append("rect")
+    .attr("class", "map-legend-ramp")
+    .attr("x", legendX)
+    .attr("y", legendY)
+    .attr("width", legendWidth)
+    .attr("height", legendHeight)
+    .attr("rx", 999)
+    .attr("fill", "url(#map-legend-gradient)");
+
+  const legendScale = d3.scaleLinear().domain([minValue, colorMaxValue]).range([legendY + legendHeight, legendY]);
+  const legendTickValues = Array.from(new Set([...d3.ticks(minValue, colorMaxValue, 4), colorMaxValue])).sort((a, b) => a - b);
+  const legendAxis = d3
+    .axisLeft(legendScale)
+    .tickValues(legendTickValues)
+    .tickSize(8)
+    .tickFormat((value) => {
+      if (hasCappedLegend && value === colorMaxValue) {
+        return `${formatValue(value, state.currency)}+`;
+      }
+
+      return formatValue(value, state.currency);
+    });
+
+  svg
+    .append("g")
+    .attr("class", "map-legend-axis")
+    .attr("transform", `translate(${legendX - 10}, 0)`)
+    .call(legendAxis);
+
+  if (hasCappedLegend) {
+    svg
+      .append("text")
+      .attr("class", "map-legend-note")
+      .attr("x", legendX + legendWidth / 2)
+      .attr("y", legendY + legendHeight + 28)
+      .attr("text-anchor", "middle")
+      .text(`Máximo real: ${formatValue(rawMaxValue, state.currency)}`);
+  }
+}
+
 function renderCharts() {
   const allStats = computeNeighborhoodStats();
-  renderChartSummary(allStats);
   syncRangeControl(allStats);
 
   drawBoxplot(
@@ -340,6 +650,8 @@ function renderCharts() {
     `Alquileres publicados por barrio en ${state.currency}`,
     `Pasá el cursor sobre cada barrio para ver más detalle. Límite visible: ${formatValue(state.maxRange, state.currency)}.`
   );
+
+  drawBarrioMap(allStats);
 }
 
 function render() {
@@ -361,9 +673,28 @@ async function loadFirstAvailableCsv(paths) {
   throw lastError;
 }
 
+async function loadFirstAvailableJson(paths) {
+  let lastError = null;
+
+  for (const path of paths) {
+    try {
+      return await d3.json(path);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+}
+
 async function loadData() {
-  const detailRows = await loadFirstAvailableCsv(DETAIL_CSV_CANDIDATES);
+  const [detailRows, geoData] = await Promise.all([
+    loadFirstAvailableCsv(DETAIL_CSV_CANDIDATES),
+    loadFirstAvailableJson(GEOJSON_CANDIDATES).catch(() => null)
+  ]);
+
   state.detailRows = detailRows;
+  state.geoData = geoData;
 
   currencySelect.addEventListener("change", (event) => {
     state.currency = event.target.value;
