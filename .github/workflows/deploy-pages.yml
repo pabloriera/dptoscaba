@@ -30,6 +30,8 @@ jobs:
         run: |
           mkdir -p dist
           cp -R site/. dist/
+          mkdir -p dist/data
+          cp data/caba_barrios.geojson dist/data/
           mkdir -p dist/output
           cp output/rent_listings_detailed.csv dist/output/
           touch dist/.nojekyll

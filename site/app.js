@@ -8,7 +8,6 @@ const GEOJSON_CANDIDATES = [
   "../data/caba_barrios.geojson"
 ];
 
-const MAP_COLOR_CAP_PERCENTILE = 0.9;
 const MAP_COLORS = [
   "#51d8f6",
   "#32a8df",
@@ -113,6 +112,66 @@ function normalizeGeoKey(value) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+function interpolateLogValue(minValue, maxValue, t) {
+  if (minValue <= 0 || maxValue <= 0) {
+    return minValue + (maxValue - minValue) * t;
+  }
+
+  return minValue * (maxValue / minValue) ** t;
+}
+
+function roundLegendTick(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return value;
+  }
+
+  const power = 10 ** Math.floor(Math.log10(value));
+  const scaled = value / power;
+  const niceSteps = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  let closestStep = niceSteps[0];
+  let smallestDistance = Math.abs(scaled - closestStep);
+
+  for (const step of niceSteps.slice(1)) {
+    const distance = Math.abs(scaled - step);
+    if (distance < smallestDistance) {
+      closestStep = step;
+      smallestDistance = distance;
+    }
+  }
+
+  return closestStep * power;
+}
+
+function buildLogLegendTicks(minValue, maxValue) {
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue) || minValue <= 0 || maxValue <= 0) {
+    return [minValue, maxValue].filter(Number.isFinite);
+  }
+
+  const ticks = [roundLegendTick(minValue)];
+  const ratio = Math.sqrt(2);
+  let current = Math.max(minValue, ticks[0]);
+
+  while (current < maxValue) {
+    const next = roundLegendTick(current * ratio);
+    if (next <= ticks[ticks.length - 1]) {
+      current *= ratio;
+      continue;
+    }
+
+    ticks.push(next);
+    current = next;
+  }
+
+  ticks[0] = minValue;
+
+  const filteredTicks = ticks.filter((value) => value >= minValue && value <= maxValue);
+  if (!filteredTicks.length || filteredTicks[filteredTicks.length - 1] !== maxValue) {
+    filteredTicks.push(maxValue);
+  }
+
+  return Array.from(new Set(filteredTicks)).sort((a, b) => a - b);
 }
 
 function computeNeighborhoodStats() {
@@ -506,12 +565,9 @@ function drawBarrioMap(stats) {
   const sortedValues = [...values].sort((a, b) => a - b);
   const minValue = sortedValues[0];
   const rawMaxValue = sortedValues[sortedValues.length - 1];
-  const cappedMaxValue = quantile(sortedValues, MAP_COLOR_CAP_PERCENTILE) || rawMaxValue;
-  const colorMaxValue = Math.max(minValue, cappedMaxValue);
-  const hasCappedLegend = rawMaxValue > colorMaxValue;
   const colorScale = d3
-    .scaleSequential()
-    .domain([minValue, colorMaxValue || minValue + 1])
+    .scaleSequentialLog()
+    .domain([minValue, rawMaxValue || minValue + 1])
     .interpolator(interpolateMapColor)
     .clamp(true);
 
@@ -579,7 +635,7 @@ function drawBarrioMap(stats) {
     .data(d3.range(0, 1.01, 0.1))
     .join("stop")
     .attr("offset", (value) => `${value * 100}%`)
-    .attr("stop-color", (value) => colorScale(minValue + (colorMaxValue - minValue) * value));
+    .attr("stop-color", (value) => colorScale(interpolateLogValue(minValue, rawMaxValue, value)));
 
   svg
     .append("text")
@@ -589,15 +645,13 @@ function drawBarrioMap(stats) {
     .attr("text-anchor", "middle")
     .text(`Mediana (${state.currency})`);
 
-  if (hasCappedLegend) {
-    svg
-      .append("text")
-      .attr("class", "map-legend-note")
-      .attr("x", legendX + legendWidth / 2)
-      .attr("y", legendY - 2)
-      .attr("text-anchor", "middle")
-      .text(`Escala visual saturada arriba de ${formatValue(colorMaxValue, state.currency)}`);
-  }
+  svg
+    .append("text")
+    .attr("class", "map-legend-note")
+    .attr("x", legendX + legendWidth / 2)
+    .attr("y", legendY - 2)
+    .attr("text-anchor", "middle")
+    .text("Escala logarítmica");
 
   svg
     .append("rect")
@@ -609,19 +663,13 @@ function drawBarrioMap(stats) {
     .attr("rx", 999)
     .attr("fill", "url(#map-legend-gradient)");
 
-  const legendScale = d3.scaleLinear().domain([minValue, colorMaxValue]).range([legendY + legendHeight, legendY]);
-  const legendTickValues = Array.from(new Set([...d3.ticks(minValue, colorMaxValue, 4), colorMaxValue])).sort((a, b) => a - b);
+  const legendScale = d3.scaleLog().domain([minValue, rawMaxValue]).range([legendY + legendHeight, legendY]);
+  const legendTickValues = buildLogLegendTicks(minValue, rawMaxValue);
   const legendAxis = d3
     .axisLeft(legendScale)
     .tickValues(legendTickValues)
     .tickSize(8)
-    .tickFormat((value) => {
-      if (hasCappedLegend && value === colorMaxValue) {
-        return `${formatValue(value, state.currency)}+`;
-      }
-
-      return formatValue(value, state.currency);
-    });
+    .tickFormat((value) => formatValue(value, state.currency));
 
   svg
     .append("g")
@@ -629,15 +677,13 @@ function drawBarrioMap(stats) {
     .attr("transform", `translate(${legendX - 10}, 0)`)
     .call(legendAxis);
 
-  if (hasCappedLegend) {
-    svg
-      .append("text")
-      .attr("class", "map-legend-note")
-      .attr("x", legendX + legendWidth / 2)
-      .attr("y", legendY + legendHeight + 28)
-      .attr("text-anchor", "middle")
-      .text(`Máximo real: ${formatValue(rawMaxValue, state.currency)}`);
-  }
+  svg
+    .append("text")
+    .attr("class", "map-legend-note")
+    .attr("x", legendX + legendWidth / 2)
+    .attr("y", legendY + legendHeight + 28)
+    .attr("text-anchor", "middle")
+    .text(`Máximo: ${formatValue(rawMaxValue, state.currency)}`);
 }
 
 function renderCharts() {
