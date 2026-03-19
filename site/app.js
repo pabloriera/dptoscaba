@@ -1,4 +1,7 @@
-const DETAIL_CSV = "output/rent_listings_detailed.csv";
+const DETAIL_CSV_CANDIDATES = [
+  "output/rent_listings_detailed.csv",
+  "../output/rent_listings_detailed.csv"
+];
 
 const state = {
   currency: "USD",
@@ -138,19 +141,19 @@ function renderHeroStats() {
 
   const metrics = [
     {
-      label: "Avisos incluidos",
+      label: "Departamentos publicados",
       value: new Intl.NumberFormat("es-AR").format(listings)
     },
     {
-      label: "Barrios observados",
+      label: "Barrios",
       value: new Intl.NumberFormat("es-AR").format(barrios)
     },
     {
-      label: "Valor típico publicado",
+      label: "Alquiler promedio",
       value: formatValue(median(currentValues), state.currency)
     },
     {
-      label: "Tamaño típico",
+      label: "Metros cuadrados promedio",
       value: `${Math.round(median(currentAreas) || 0)} m²`
     }
   ];
@@ -313,8 +316,22 @@ function render() {
   renderCharts();
 }
 
+async function loadFirstAvailableCsv(paths) {
+  let lastError = null;
+
+  for (const path of paths) {
+    try {
+      return await d3.csv(path);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+}
+
 async function loadData() {
-  const detailRows = await d3.csv(DETAIL_CSV);
+  const detailRows = await loadFirstAvailableCsv(DETAIL_CSV_CANDIDATES);
   state.detailRows = detailRows;
 
   currencySelect.addEventListener("change", (event) => {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Alquileres en barrios de Buenos Aires</title>
+    <title>Alquileres en Ciudad de Buenos Aires</title>
     <meta
       name="description"
       content="Una mirada simple a los alquileres publicados en barrios de Buenos Aires, con un gráfico interactivo y cifras generales."
@@ -15,19 +15,18 @@
     <div class="page-shell">
       <header class="site-header">
         <p class="kicker">Informe abierto</p>
-        <h1>Alquileres publicados en barrios de Buenos Aires</h1>
+        <h1>Alquileres publicados en Ciudad de Buenos Aires</h1>
         <p class="lede">
-          Esta página ofrece una lectura general del mercado de alquileres publicados en la ciudad. La idea es ayudar a comparar barrios,
-          entender dónde suelen concentrarse los valores más altos y ver en qué zonas aparecen precios más moderados.
+          
         </p>
       </header>
 
       <main>
         <section class="panel metrics-panel">
-          <h2>Panorama general</h2>
+          <h2>Datos</h2>
           <div class="hero-stats" id="hero-stats"></div>
         </section>
-
+        
         <section class="panel text-panel">
           <h2>Cómo leer el gráfico</h2>
           <p>
@@ -59,6 +58,11 @@
                 <option value="median-asc">Valor típico: de menor a mayor</option>
                 <option value="name-asc">Barrio: de A a Z</option>
               </select>
+            </label>
+            <label class="control control-range">
+              <span>Límite máximo visible</span>
+              <input id="range-max" type="range">
+              <strong id="range-max-value" class="control-value"></strong>
             </label>
           </div>
         </section>
