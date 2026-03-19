@@ -1,12 +1,9 @@
-const ARS_PER_USD = 1400;
 const DETAIL_CSV = "output/rent_listings_detailed.csv";
-const SUMMARY_CSV = "output/rent_summary_by_barrio.csv";
 
 const state = {
   currency: "USD",
   sort: "median-desc",
-  detailRows: [],
-  summaryRows: []
+  detailRows: []
 };
 
 const heroStats = document.getElementById("hero-stats");
@@ -31,7 +28,7 @@ function formatValue(value, currency) {
     }).format(value);
   }
 
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0
@@ -73,20 +70,15 @@ function quantile(sortedValues, q) {
   return sortedValues[low] * (1 - weight) + sortedValues[high] * weight;
 }
 
-function computeNeighborhoodStats(excludedBarrios = new Set()) {
+function normalizeBarrio(value) {
+  return (value || "").trim().toLowerCase();
+}
+
+function computeNeighborhoodStats() {
   const grouped = d3.group(
     state.detailRows.filter((row) => {
-      const barrio = (row.barrio || "").trim();
-      if (!barrio) {
-        return false;
-      }
-
-      const normalized = barrio.toLowerCase();
-      if (normalized === "otro" || normalized === "otros") {
-        return false;
-      }
-
-      if (excludedBarrios.has(barrio)) {
+      const barrio = normalizeBarrio(row.barrio);
+      if (!barrio || barrio === "otro" || barrio === "otros") {
         return false;
       }
 
@@ -132,7 +124,11 @@ function computeNeighborhoodStats(excludedBarrios = new Set()) {
 
 function renderHeroStats() {
   const listings = state.detailRows.length;
-  const barrios = new Set(state.detailRows.map((row) => row.barrio).filter(Boolean)).size;
+  const barrios = new Set(
+    state.detailRows
+      .map((row) => normalizeBarrio(row.barrio))
+      .filter((value) => value && value !== "otro" && value !== "otros")
+  ).size;
   const currentValues = state.detailRows
     .map((row) => toCurrency(row, state.currency))
     .filter((value) => Number.isFinite(value) && value > 1);
@@ -142,19 +138,19 @@ function renderHeroStats() {
 
   const metrics = [
     {
-      label: "Listings included",
-      value: new Intl.NumberFormat("en-US").format(listings)
+      label: "Avisos incluidos",
+      value: new Intl.NumberFormat("es-AR").format(listings)
     },
     {
-      label: "Neighborhoods covered",
-      value: new Intl.NumberFormat("en-US").format(barrios)
+      label: "Barrios observados",
+      value: new Intl.NumberFormat("es-AR").format(barrios)
     },
     {
-      label: "Typical asking rent",
+      label: "Valor típico publicado",
       value: formatValue(median(currentValues), state.currency)
     },
     {
-      label: "Typical size",
+      label: "Tamaño típico",
       value: `${Math.round(median(currentAreas) || 0)} m²`
     }
   ];
@@ -171,11 +167,11 @@ function renderHeroStats() {
     .join("");
 }
 
-function renderChartSummary(elementId, stats, excludedText) {
-  const container = document.getElementById(elementId);
+function renderChartSummary(stats) {
+  const container = document.getElementById("chart-summary");
   const units = stats.reduce((sum, row) => sum + row.count, 0);
   const medianOfMedians = median(stats.map((row) => row.median).filter(Number.isFinite));
-  container.textContent = `${new Intl.NumberFormat("en-US").format(units)} homes plotted across ${stats.length} neighborhoods${excludedText}. Typical neighborhood median: ${formatValue(medianOfMedians, state.currency)}.`;
+  container.textContent = `${new Intl.NumberFormat("es-AR").format(units)} unidades en ${stats.length} barrios. La mediana típica entre barrios es ${formatValue(medianOfMedians, state.currency)}.`;
 }
 
 function drawBoxplot(svgId, stats, title, note) {
@@ -205,15 +201,7 @@ function drawBoxplot(svgId, stats, title, note) {
     .attr("transform", `translate(0, ${margin.top + chartHeight})`)
     .call(grid);
 
-  const axisX = d3
-    .axisBottom(x)
-    .ticks(8)
-    .tickFormat((value) => {
-      if (state.currency === "ARS") {
-        return d3.format(",.0f")(value);
-      }
-      return d3.format(",.0f")(value);
-    });
+  const axisX = d3.axisBottom(x).ticks(8).tickFormat((value) => d3.format(",.0f")(value));
 
   svg
     .append("g")
@@ -275,7 +263,7 @@ function drawBoxplot(svgId, stats, title, note) {
     .attr("y2", 9);
 
   rows.append("title").text(
-    (row) => `${row.barrio}\nListings: ${row.count}\nMedian: ${formatValue(row.median, state.currency)}\nMiddle range: ${formatValue(row.q1, state.currency)} to ${formatValue(row.q3, state.currency)}\nFull spread: ${formatValue(row.min, state.currency)} to ${formatValue(row.max, state.currency)}`
+    (row) => `${row.barrio}\nUnidades: ${row.count}\nMediana: ${formatValue(row.median, state.currency)}\nRango central: ${formatValue(row.q1, state.currency)} a ${formatValue(row.q3, state.currency)}\nRango completo: ${formatValue(row.min, state.currency)} a ${formatValue(row.max, state.currency)}`
   );
 
   svg
@@ -290,7 +278,7 @@ function drawBoxplot(svgId, stats, title, note) {
     .attr("class", "chart-subtitle")
     .attr("x", margin.left)
     .attr("y", 58)
-    .text(`${new Intl.NumberFormat("en-US").format(stats.reduce((sum, row) => sum + row.count, 0))} homes shown`);
+    .text(`${new Intl.NumberFormat("es-AR").format(stats.reduce((sum, row) => sum + row.count, 0))} unidades mostradas`);
 
   svg
     .append("text")
@@ -298,7 +286,7 @@ function drawBoxplot(svgId, stats, title, note) {
     .attr("x", width - margin.right)
     .attr("y", height - 14)
     .attr("text-anchor", "end")
-    .text(`Monthly asking rent (${state.currency})`);
+    .text(`Alquiler publicado por mes (${state.currency})`);
 
   svg
     .append("text")
@@ -310,23 +298,13 @@ function drawBoxplot(svgId, stats, title, note) {
 
 function renderCharts() {
   const allStats = computeNeighborhoodStats();
-  const noPuertoMaderoStats = computeNeighborhoodStats(new Set(["Puerto Madero"]));
-
-  renderChartSummary("chart-summary-all", allStats, "");
-  renderChartSummary("chart-summary-no-pm", noPuertoMaderoStats, ", excluding Puerto Madero");
+  renderChartSummary(allStats);
 
   drawBoxplot(
     "boxplot-all",
     allStats,
-    `Asking rents by neighborhood in ${state.currency}`,
-    "Hover over a neighborhood to see its full range and middle band."
-  );
-
-  drawBoxplot(
-    "boxplot-no-pm",
-    noPuertoMaderoStats,
-    `Asking rents without Puerto Madero in ${state.currency}`,
-    "This view removes one high-end area so the rest of the market is easier to compare."
+    `Alquileres publicados por barrio en ${state.currency}`,
+    "Pasá el cursor sobre cada barrio para ver más detalle."
   );
 }
 
@@ -336,13 +314,8 @@ function render() {
 }
 
 async function loadData() {
-  const [detailRows, summaryRows] = await Promise.all([
-    d3.csv(DETAIL_CSV),
-    d3.csv(SUMMARY_CSV)
-  ]);
-
+  const detailRows = await d3.csv(DETAIL_CSV);
   state.detailRows = detailRows;
-  state.summaryRows = summaryRows;
 
   currencySelect.addEventListener("change", (event) => {
     state.currency = event.target.value;
@@ -361,8 +334,8 @@ loadData().catch((error) => {
   console.error(error);
   heroStats.innerHTML = `
     <div class="metric">
-      <span class="metric-value">Data unavailable</span>
-      <span class="metric-label">The page could not load the market snapshot.</span>
+      <span class="metric-value">Sin datos</span>
+      <span class="metric-label">No fue posible cargar la información del sitio.</span>
     </div>
   `;
 });
