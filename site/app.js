@@ -9,6 +9,24 @@ const GEOJSON_CANDIDATES = [
 ];
 
 const USD_TO_ARS = 1400;
+const ANALYSIS_CONFIG = {
+  rent: {
+    heroLabel: "Alquiler mediano",
+    chartTitle: "Alquileres publicados por barrio",
+    axisLabel: "Alquiler publicado por mes",
+    mapDescription: "El color muestra la mediana del alquiler publicado en cada barrio. Pasá el cursor para ver el valor típico, el rango publicado y la cantidad de unidades relevadas.",
+    emptyMapMessage: "No hay datos suficientes para pintar el mapa de alquileres.",
+    summaryLabel: "alquileres"
+  },
+  expenses: {
+    heroLabel: "Expensas medianas",
+    chartTitle: "Expensas publicadas por barrio",
+    axisLabel: "Expensas publicadas por mes",
+    mapDescription: "El color muestra la mediana de las expensas publicadas en cada barrio. Pasá el cursor para ver el valor típico, el rango publicado y la cantidad de unidades relevadas.",
+    emptyMapMessage: "No hay datos suficientes para pintar el mapa de expensas.",
+    summaryLabel: "expensas"
+  }
+};
 const MAP_COLORS = [
   "#51d8f6",
   "#32a8df",
@@ -33,6 +51,7 @@ const MAP_HIGHLIGHTED_BARRIOS = new Set([
 ]);
 
 const state = {
+  analysis: "rent",
   currency: "USD",
   sort: "median-desc",
   detailRows: [],
@@ -41,12 +60,14 @@ const state = {
 };
 
 const heroStats = document.getElementById("hero-stats");
+const analysisSelect = document.getElementById("analysis-select");
 const currencySelect = document.getElementById("currency-select");
 const sortSelect = document.getElementById("sort-select");
 const rangeMaxInput = document.getElementById("range-max");
 const rangeMaxValue = document.getElementById("range-max-value");
 const boxplotTooltip = document.getElementById("boxplot-tooltip");
 const mapTooltip = document.getElementById("barrio-map-tooltip");
+const mapDescription = document.getElementById("map-description");
 const interpolateMapColor = d3.interpolateRgbBasis(MAP_COLORS);
 
 function parseNumber(value) {
@@ -74,11 +95,50 @@ function formatValue(value, currency) {
   }).format(value);
 }
 
-function toCurrency(row, currency) {
-  if (currency === "ARS") {
-    return parseNumber(row.rent_amount_ars);
+function convertAmount(amount, sourceCurrency, targetCurrency) {
+  if (!Number.isFinite(amount)) {
+    return null;
   }
-  return parseNumber(row.rent_amount_usd);
+
+  if (targetCurrency === "ARS") {
+    if (sourceCurrency === "$") {
+      return amount;
+    }
+    if (sourceCurrency === "USD") {
+      return amount * USD_TO_ARS;
+    }
+    return null;
+  }
+
+  if (targetCurrency === "USD") {
+    if (sourceCurrency === "USD") {
+      return amount;
+    }
+    if (sourceCurrency === "$") {
+      return amount / USD_TO_ARS;
+    }
+    return null;
+  }
+
+  return null;
+}
+
+function getAnalysisConfig() {
+  return ANALYSIS_CONFIG[state.analysis] || ANALYSIS_CONFIG.rent;
+}
+
+function getMetricValue(row, currency) {
+  if (state.analysis === "rent") {
+    const field = currency === "ARS" ? "rent_amount_ars" : "rent_amount_usd";
+    const precomputed = parseNumber(row[field]);
+    if (Number.isFinite(precomputed)) {
+      return precomputed;
+    }
+
+    return convertAmount(parseNumber(row.rent_amount), row.rent_currency, currency);
+  }
+
+  return convertAmount(parseNumber(row.expenses_amount), row.expenses_currency, currency);
 }
 
 function getMapLegendMax(currency) {
@@ -205,7 +265,7 @@ function computeNeighborhoodStats() {
         return false;
       }
 
-      const amount = toCurrency(row, state.currency);
+      const amount = getMetricValue(row, state.currency);
       return Number.isFinite(amount) && amount > 1;
     }),
     (row) => row.barrio.trim()
@@ -215,7 +275,7 @@ function computeNeighborhoodStats() {
 
   for (const [barrio, rows] of grouped.entries()) {
     const values = rows
-      .map((row) => toCurrency(row, state.currency))
+      .map((row) => getMetricValue(row, state.currency))
       .filter((value) => Number.isFinite(value))
       .sort((a, b) => a - b);
 
@@ -268,11 +328,13 @@ function renderHeroStats() {
       .filter((value) => value && value !== "otro" && value !== "otros")
   ).size;
   const currentValues = state.detailRows
-    .map((row) => toCurrency(row, state.currency))
+    .map((row) => getMetricValue(row, state.currency))
     .filter((value) => Number.isFinite(value) && value > 1);
   const currentAreas = state.detailRows
     .map((row) => parseNumber(row.total_area_m2))
     .filter((value) => Number.isFinite(value));
+
+  const analysisConfig = getAnalysisConfig();
 
   const metrics = [
     {
@@ -284,7 +346,7 @@ function renderHeroStats() {
       value: new Intl.NumberFormat("es-AR").format(barrios)
     },
     {
-      label: "Alquiler promedio",
+      label: analysisConfig.heroLabel,
       value: formatValue(median(currentValues), state.currency)
     },
     {
@@ -313,7 +375,8 @@ function renderChartSummary(stats) {
 
   const units = stats.reduce((sum, row) => sum + row.count, 0);
   const medianOfMedians = median(stats.map((row) => row.median).filter(Number.isFinite));
-  container.textContent = `${new Intl.NumberFormat("es-AR").format(units)} unidades en ${stats.length} barrios. La mediana entre barrios es ${formatValue(medianOfMedians, state.currency)}.`;
+  const analysisConfig = getAnalysisConfig();
+  container.textContent = `${new Intl.NumberFormat("es-AR").format(units)} unidades en ${stats.length} barrios. La mediana entre barrios para ${analysisConfig.summaryLabel} es ${formatValue(medianOfMedians, state.currency)}.`;
 }
 
 function getRangeStep(currency) {
@@ -490,7 +553,7 @@ function drawBoxplot(svgId, stats, title, note) {
     .attr("x", width - margin.right)
     .attr("y", height - 14)
     .attr("text-anchor", "end")
-    .text(`Alquiler publicado por mes (${state.currency})`);
+    .text(`${getAnalysisConfig().axisLabel} (${state.currency})`);
 
   svg
     .append("text")
@@ -580,7 +643,7 @@ function drawBarrioMap(stats) {
       .attr("class", "map-empty")
       .attr("x", 40)
       .attr("y", 120)
-      .text("No hay datos suficientes para pintar el mapa.");
+      .text(getAnalysisConfig().emptyMapMessage);
     hideMapTooltip();
     return;
   }
@@ -691,7 +754,7 @@ function drawBarrioMap(stats) {
     .attr("x", legendX + legendWidth / 2)
     .attr("y", legendY - 18)
     .attr("text-anchor", "middle")
-    .text(`Mediana (${state.currency})`);
+    .text(`Mediana de ${getAnalysisConfig().summaryLabel} (${state.currency})`);
 
 
   svg
@@ -729,11 +792,12 @@ function drawBarrioMap(stats) {
 function renderCharts() {
   const allStats = computeNeighborhoodStats();
   syncRangeControl(allStats);
+  const analysisConfig = getAnalysisConfig();
 
   drawBoxplot(
     "boxplot-all",
     allStats,
-    `Alquileres publicados por barrio en ${state.currency}`,
+    `${analysisConfig.chartTitle} en ${state.currency}`,
     `Pasá el cursor sobre cada barrio para ver más detalle. Límite visible: ${formatValue(state.maxRange, state.currency)}.`
   );
 
@@ -741,6 +805,9 @@ function renderCharts() {
 }
 
 function render() {
+  if (mapDescription) {
+    mapDescription.textContent = getAnalysisConfig().mapDescription;
+  }
   renderHeroStats();
   renderCharts();
 }
@@ -781,6 +848,12 @@ async function loadData() {
 
   state.detailRows = detailRows;
   state.geoData = geoData;
+
+  analysisSelect.addEventListener("change", (event) => {
+    state.analysis = event.target.value;
+    state.maxRange = null;
+    render();
+  });
 
   currencySelect.addEventListener("change", (event) => {
     state.currency = event.target.value;

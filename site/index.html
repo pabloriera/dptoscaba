@@ -8,13 +8,14 @@
       name="description"
       content=""
     >
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230969da'/%3E%3Cpath d='M18 44V20h7l7 14 7-14h7v24h-6V31l-6 12h-4l-6-12v13z' fill='white'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
   </head>
   <body>
     <div class="page-shell">
       <header class="site-header">
-        <h1>Alquileres de 2 ambientes publicados en Ciudad de Buenos Aires</h1>
+        <h1>Alquileres de 2 ambientes en Ciudad de Buenos Aires</h1>
       </header>
 
       <main>
@@ -27,12 +28,19 @@
           <h2>Cómo leer el gráfico</h2>
           <p>
             Cada barrio aparece con una caja horizontal. La línea del centro muestra un valor típico. La caja marca el rango más habitual,
-            y las líneas laterales ayudan a ver hasta dónde se extienden los precios publicados.
+            y las líneas laterales ayudan a ver hasta dónde se extienden los valores publicados.
           </p>
         </section>
 
         <section class="panel controls-panel">
           <div class="control-row">
+            <label class="control">
+              <span>Dato visualizado</span>
+              <select id="analysis-select">
+                <option value="rent">Alquiler</option>
+                <option value="expenses">Expensas</option>
+              </select>
+            </label>
             <label class="control">
               <span>Moneda</span>
               <select id="currency-select">
@@ -57,20 +65,20 @@
         </section>
 
         <section class="panel chart-panel">
-          <svg id="boxplot-all" aria-label="Grafico de alquileres por barrio"></svg>
+          <svg id="boxplot-all" aria-label="Grafico por barrio del dato seleccionado"></svg>
           <div id="boxplot-tooltip" class="data-tooltip" hidden></div>
         </section>
 
         <section class="panel map-panel">
           <div class="map-header">
             <h2>Mapa por barrio</h2>
-            <p class="map-text">
+            <p id="map-description" class="map-text">
               El color muestra la mediana del alquiler publicado en cada barrio. Pasá el cursor para ver el valor típico,
               el rango publicado y la cantidad de unidades relevadas.
             </p>
           </div>
           <div class="map-frame">
-            <svg id="barrio-map" aria-label="Mapa de alquileres por barrio"></svg>
+            <svg id="barrio-map" aria-label="Mapa por barrio del dato seleccionado"></svg>
             <div id="barrio-map-tooltip" class="map-tooltip" hidden></div>
           </div>
         </section>
